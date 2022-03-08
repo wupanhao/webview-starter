@@ -3,6 +3,7 @@ package com.jslepi.myapplication;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import android.Manifest;
 import android.annotation.TargetApi;
@@ -25,6 +26,8 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.DownloadListener;
 import android.webkit.JavascriptInterface;
+import android.webkit.JsResult;
+import android.webkit.PermissionRequest;
 import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -42,8 +45,11 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "MainActivity";
     WebView myWebView;
+    //请求状态码
+    private static final int REQUEST_PERMISSION_CODE = 1;
     public static final int INPUT_FILE_REQUEST_CODE = 1;
     public static final int FILE_CHOOSER_RESULT_CODE = 1;
+    private static final int CAMERA_REQUEST = 1888;
     private ValueCallback mFilePathCallback;
     private String mCameraPhotoPath;
     ValueCallback<Uri> uploadMessage;
@@ -52,8 +58,7 @@ public class MainActivity extends AppCompatActivity {
     private static String[] PERMISSIONS_STORAGE = {
             Manifest.permission.READ_EXTERNAL_STORAGE,
             Manifest.permission.WRITE_EXTERNAL_STORAGE};
-    //请求状态码
-    private static int REQUEST_PERMISSION_CODE = 1;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -84,14 +89,15 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setDisplayZoomControls(false);
         webSettings.setAllowFileAccess(true);
         webSettings.setAllowContentAccess(true);
+        webSettings.setJavaScriptCanOpenWindowsAutomatically(true); //设置允许JS弹窗
+
+        webSettings.setAllowFileAccessFromFileURLs(true);
+        webSettings.setAllowUniversalAccessFromFileURLs(true);
 
 //        For Debug Option
 //        webSettings.setDisplayZoomControls(true);
 //        myWebView.loadUrl("http://192.168.50.76:8601/editor.html");
 //        myWebView.loadUrl("http://192.168.50.243:20110/build/editor.html");
-
-
-//        myWebView.loadUrl("http://www.script-tutorials.com/demos/199/index.html");
 //        myWebView.loadUrl("https://turbowarp.org/editor");
 
 
@@ -130,6 +136,11 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
                 Log.d(TAG, url+'/'+contentDisposition+ '/'+mimetype);
+
+                if (Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP) {
+                    checkAndAskForPermissions();
+                }
+
                 downBlobUrl(myWebView,url);
 //                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url.replace("null", "file://")));
 //                request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimetype));
@@ -154,6 +165,20 @@ public class MainActivity extends AppCompatActivity {
         myWebView.setWebChromeClient(new WebChromeClient() {
 
             @Override
+            public void onPermissionRequest(final PermissionRequest request) {
+
+                MainActivity.this.runOnUiThread(new Runnable(){
+                    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+                    @Override
+                    public void run() {
+                        Log.d(TAG,"called onPermissionRequest");
+                        request.grant(request.getResources());
+                    }// run
+                });// MainActivity
+
+            }
+
+            @Override
             public void onProgressChanged(WebView view, int newProgress) {
                 super.onProgressChanged(view, newProgress);
             }
@@ -173,15 +198,12 @@ public class MainActivity extends AppCompatActivity {
         });
 
         myWebView.addJavascriptInterface(new webAppInterface(), "android");
+
+        checkAndAskForPermissions();
+//        myWebView.loadUrl("https://webrtc.github.io/samples/src/content/getusermedia/gum/");
+//        myWebView.loadUrl("https://marcusbelcher.github.io/wasm-asm-camera-webgl-test/index.html");
         myWebView.loadUrl("file:///android_asset/build/editor.html");
 //        myWebView.loadUrl("http://192.168.50.243:20110/build/editor.html");
-
-        if (Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP) {
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, PERMISSIONS_STORAGE, REQUEST_PERMISSION_CODE);
-            }
-        }
-
 
     }
 
@@ -259,6 +281,37 @@ public class MainActivity extends AppCompatActivity {
     }
     */
 
+    private void checkAndAskForPermissions() {
+
+        if (ActivityCompat.checkSelfPermission(this,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, PERMISSIONS_STORAGE, REQUEST_PERMISSION_CODE);
+        }
+
+        if (ActivityCompat.checkSelfPermission(this,
+                Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this,new String[] {Manifest.permission.RECORD_AUDIO}, REQUEST_PERMISSION_CODE);
+        }
+        if (ContextCompat.checkSelfPermission(MainActivity.this,
+                Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED) {
+
+            // No explanation needed; request the permission
+            if (ActivityCompat.shouldShowRequestPermissionRationale(MainActivity.this,
+                    Manifest.permission.CAMERA)) {
+
+            } else ActivityCompat.requestPermissions(MainActivity.this,
+                    new String[]{Manifest.permission.CAMERA}, CAMERA_REQUEST);
+        } else {
+            // Permission has already been granted
+
+        }
+
+
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -275,7 +328,7 @@ public class MainActivity extends AppCompatActivity {
 class webAppInterface {
     @JavascriptInterface
     public void download(String base64)  {
-        String path = Environment.getExternalStorageDirectory().toString() + "/Download/test.sb3";
+        String path = Environment.getExternalStorageDirectory().toString() + "/Download/乐派作品.sb3";
         try{
             Base64Utils.decoderBase64File(base64.replace("data:application/x.scratch.sb3;base64,",""),path);
         }catch (Exception e){
