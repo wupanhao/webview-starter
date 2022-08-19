@@ -1,9 +1,11 @@
 package com.jslepi.myapplication;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.webkit.WebViewAssetLoader;
 
 import android.Manifest;
 import android.annotation.TargetApi;
@@ -14,6 +16,7 @@ import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
@@ -31,6 +34,8 @@ import android.webkit.PermissionRequest;
 import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -39,6 +44,8 @@ import android.widget.Toast;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -63,7 +70,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .build();
         final Window win = getWindow();
 //        No Statusbar
         win.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -87,12 +97,15 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setBuiltInZoomControls(true);
 //         设定缩放控件隐藏
         webSettings.setDisplayZoomControls(false);
-        webSettings.setAllowFileAccess(true);
-        webSettings.setAllowContentAccess(true);
+
         webSettings.setJavaScriptCanOpenWindowsAutomatically(true); //设置允许JS弹窗
 
-        webSettings.setAllowFileAccessFromFileURLs(true);
-        webSettings.setAllowUniversalAccessFromFileURLs(true);
+        webSettings.setAllowFileAccessFromFileURLs(false);
+        webSettings.setAllowUniversalAccessFromFileURLs(false);
+        webSettings.setAllowFileAccess(false);
+        webSettings.setAllowContentAccess(false);
+
+        webSettings.setDatabaseEnabled(true);
 
 //        For Debug Option
 //        webSettings.setDisplayZoomControls(true);
@@ -102,15 +115,25 @@ public class MainActivity extends AppCompatActivity {
 
 
         myWebView.setWebViewClient(new WebViewClient() {
+
+            @Override
+            @RequiresApi(21)
+            public WebResourceResponse shouldInterceptRequest(WebView view,
+                                                              WebResourceRequest request) {
+                return assetLoader.shouldInterceptRequest(request.getUrl());
+            }
+
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                view.loadUrl(url);
-                return true;
+//                view.loadUrl(url);
+                return false;
             }
+
+
         });
         myWebView.setDownloadListener(new DownloadListener() {
 
-            public void downBlobUrl(WebView web,String url) {
+            public void downBlobUrl(WebView web, String url) {
                 if (url.startsWith("blob")) {
                     String blob = "  var request = new XMLHttpRequest();" +
                             "        request.open('GET', '" + url + "', true);" +
@@ -128,21 +151,26 @@ public class MainActivity extends AppCompatActivity {
                             "             }" +
                             "        };" +
                             "        request.send();";
-                    String js = "javascript:"+blob;
-                    web.evaluateJavascript(js,null);
+                    String js = "javascript:" + blob;
+                    web.evaluateJavascript(js, null);
                 }
             }
 
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
-                Log.d(TAG, url+'/'+contentDisposition+ '/'+mimetype);
+                Log.d(TAG, url + '+' + contentDisposition + '+' + mimetype);
 
                 if (Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP) {
-                    checkAndAskForPermissions();
+                    if (ActivityCompat.checkSelfPermission(MainActivity.this,
+                            Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                            != PackageManager.PERMISSION_GRANTED) {
+                        ActivityCompat.requestPermissions(MainActivity.this, PERMISSIONS_STORAGE, REQUEST_PERMISSION_CODE);
+                    }
                 }
 
-                downBlobUrl(myWebView,url);
-//                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url.replace("null", "file://")));
+                downBlobUrl(myWebView, url);
+
+//                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
 //                request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimetype));
 //                request.setDescription("Downloading file...");
 //                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
@@ -159,6 +187,7 @@ public class MainActivity extends AppCompatActivity {
 //                    Toast.makeText(getApplicationContext(), "Downloading Complete", Toast.LENGTH_SHORT).show();
 //                }
 //            };
+
         });
 
 
@@ -167,11 +196,12 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
 
-                MainActivity.this.runOnUiThread(new Runnable(){
+                MainActivity.this.runOnUiThread(new Runnable() {
                     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
                     @Override
                     public void run() {
-                        Log.d(TAG,"called onPermissionRequest");
+                        Log.d(TAG, "called onPermissionRequest:");
+                        checkAndAskForPermissions();
                         request.grant(request.getResources());
                     }// run
                 });// MainActivity
@@ -199,11 +229,15 @@ public class MainActivity extends AppCompatActivity {
 
         myWebView.addJavascriptInterface(new webAppInterface(), "android");
 
-        checkAndAskForPermissions();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+//            WebView.setWebContentsDebuggingEnabled(true);
+        }
+
 //        myWebView.loadUrl("https://webrtc.github.io/samples/src/content/getusermedia/gum/");
 //        myWebView.loadUrl("https://marcusbelcher.github.io/wasm-asm-camera-webgl-test/index.html");
-        myWebView.loadUrl("file:///android_asset/build/editor.html");
+//        myWebView.loadUrl("file:///android_asset/build/editor.html");
 //        myWebView.loadUrl("http://192.168.50.243:20110/build/editor.html");
+        myWebView.loadUrl("https://appassets.androidplatform.net/assets/build/editor.html");
 
     }
 
@@ -264,8 +298,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-
-
 //    可自定义处理横竖屏切换等事件
     /*
     @Override
@@ -282,7 +314,16 @@ public class MainActivity extends AppCompatActivity {
     */
 
     private void checkAndAskForPermissions() {
+        if (ActivityCompat.checkSelfPermission(this,
+                Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED || ActivityCompat.checkSelfPermission(this,
+                Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{
+                    Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA}, REQUEST_PERMISSION_CODE);
+        }
 
+        /*
         if (ActivityCompat.checkSelfPermission(this,
                 Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -297,17 +338,10 @@ public class MainActivity extends AppCompatActivity {
         if (ContextCompat.checkSelfPermission(MainActivity.this,
                 Manifest.permission.CAMERA)
                 != PackageManager.PERMISSION_GRANTED) {
-
-            // No explanation needed; request the permission
-            if (ActivityCompat.shouldShowRequestPermissionRationale(MainActivity.this,
-                    Manifest.permission.CAMERA)) {
-
-            } else ActivityCompat.requestPermissions(MainActivity.this,
+            ActivityCompat.requestPermissions(MainActivity.this,
                     new String[]{Manifest.permission.CAMERA}, CAMERA_REQUEST);
-        } else {
-            // Permission has already been granted
-
         }
+        */
 
 
     }
@@ -326,14 +360,20 @@ public class MainActivity extends AppCompatActivity {
 }
 
 class webAppInterface {
+    private static final String TAG = "webAppInterface";
+
     @JavascriptInterface
-    public void download(String base64)  {
-        String path = Environment.getExternalStorageDirectory().toString() + "/Download/乐派作品.sb3";
-        try{
-            Base64Utils.decoderBase64File(base64.replace("data:application/x.scratch.sb3;base64,",""),path);
-        }catch (Exception e){
+    public void download(String base64) {
+        Date now = new Date();
+        SimpleDateFormat ft = new SimpleDateFormat("yyyy-MM-dd hh-mm-ss");
+        String path = Environment.getExternalStorageDirectory().toString() + "/Download/乐派作品" + ft.format(now) + ".sb3";
+        Log.d(TAG, "download: " + path);
+        try {
+            Base64Utils.decoderBase64File(base64.replace("data:application/x.scratch.sb3;base64,", ""), path);
+        } catch (Exception e) {
             e.printStackTrace();
         }
+
     }
 }
 
@@ -369,6 +409,7 @@ class Base64Utils {
             file.delete();
         }
         byte[] buffer = Base64.decode(base64Code, Base64.DEFAULT);
+        Log.d("download: ", savePath);
         FileOutputStream out = new FileOutputStream(savePath);
         out.write(buffer);
         out.close();
