@@ -104,7 +104,7 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setAllowUniversalAccessFromFileURLs(false);
         webSettings.setAllowFileAccess(false);
         webSettings.setAllowContentAccess(false);
-
+        webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         webSettings.setDatabaseEnabled(true);
 
 //        For Debug Option
